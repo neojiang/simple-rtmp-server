@@ -78,7 +78,9 @@ using namespace std;
 
 // @see: NGX_RTMP_HLS_DELAY, 
 // 63000: 700ms, ts_tbn=90000
-#define SRS_AUTO_HLS_DELAY 63000
+// 72000: 800ms, ts_tbn=90000
+// @see https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-71352511
+#define SRS_AUTO_HLS_DELAY 72000
 
 // the mpegts header specifed the video/audio pid.
 #define TS_VIDEO_PID 256
@@ -135,6 +137,8 @@ u_int8_t mpegts_header[] = {
     /* PMT */
     0xe1, 0x00,
     0xf0, 0x00,
+    // must generate header with/without video, @see:
+    // https://github.com/winlinvip/simple-rtmp-server/issues/40
     0x1b, 0xe1, 0x00, 0xf0, 0x00, /* h264, pid=0x100=256 */
     0x0f, 0xe1, 0x01, 0xf0, 0x00, /* aac, pid=0x101=257 */
     /*0x03, 0xe1, 0x01, 0xf0, 0x00,*/ /* mp3 */
@@ -235,7 +239,8 @@ public:
                     p[-1] |= 0x20; // Both Adaption and Payload
                     *p++ = 7;    // size
                     *p++ = 0x50; // random access + PCR
-                    p = write_pcr(p, frame->dts - SRS_AUTO_HLS_DELAY);
+                    // about the pcr, read https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-71352511
+                    p = write_pcr(p, frame->dts);
                 }
                 
                 // PES header
@@ -366,11 +371,18 @@ private:
     }
     static char* write_pcr(char* p, int64_t pcr)
     {
-        *p++ = (char) (pcr >> 25);
-        *p++ = (char) (pcr >> 17);
-        *p++ = (char) (pcr >> 9);
-        *p++ = (char) (pcr >> 1);
-        *p++ = (char) (pcr << 7 | 0x7e);
+        // the pcr=dts-delay, where dts = frame->dts + delay
+        // and the pcr should never be negative
+        // @see https://github.com/winlinvip/simple-rtmp-server/issues/268
+        srs_assert(pcr >= 0);
+        
+        int64_t v = pcr;
+        
+        *p++ = (char) (v >> 25);
+        *p++ = (char) (v >> 17);
+        *p++ = (char) (v >> 9);
+        *p++ = (char) (v >> 1);
+        *p++ = (char) (v << 7 | 0x7e);
         *p++ = 0;
     
         return p;
@@ -648,8 +660,13 @@ int SrsHlsMuxer::on_sequence_header()
 bool SrsHlsMuxer::is_segment_overflow()
 {
     srs_assert(current);
-    
     return current->duration >= hls_fragment;
+}
+
+bool SrsHlsMuxer::is_segment_absolutely_overflow()
+{
+    srs_assert(current);
+    return current->duration >= 2 * hls_fragment;
 }
 
 int SrsHlsMuxer::flush_audio(SrsMpegtsFrame* af, SrsBuffer* ab)
@@ -679,7 +696,7 @@ int SrsHlsMuxer::flush_audio(SrsMpegtsFrame* af, SrsBuffer* ab)
     return ret;
 }
 
-int SrsHlsMuxer::flush_video(SrsMpegtsFrame* af, SrsBuffer* ab, SrsMpegtsFrame* vf, SrsBuffer* vb)
+int SrsHlsMuxer::flush_video(SrsMpegtsFrame* /*af*/, SrsBuffer* /*ab*/, SrsMpegtsFrame* vf, SrsBuffer* vb)
 {
     int ret = ERROR_SUCCESS;
 
@@ -967,8 +984,6 @@ SrsHlsCache::SrsHlsCache()
     
     af = new SrsMpegtsFrame();
     vf = new SrsMpegtsFrame();
-
-    video_count = 0;
 }
 
 SrsHlsCache::~SrsHlsCache()
@@ -998,9 +1013,6 @@ int SrsHlsCache::on_publish(SrsHlsMuxer* muxer, SrsRequest* req, int64_t segment
     
     // get the hls path config
     std::string hls_path = _srs_config->get_hls_path(vhost);
-    
-    // reset video count for new publish session.
-    video_count = 0;
     
     // TODO: FIXME: support load exists m3u8, to continue publish stream.
     // for the HLS donot requires the EXT-X-MEDIA-SEQUENCE be monotonically increase.
@@ -1082,9 +1094,15 @@ int SrsHlsCache::write_audio(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
         }
     }
     
-    // for pure audio
-    // start new segment when duration overflow.
-    if (video_count == 0 && muxer->is_segment_overflow()) {
+    // reap when current source is pure audio.
+    // it maybe changed when stream info changed,
+    // for example, pure audio when start, audio/video when publishing,
+    // pure audio again for audio disabled.
+    // so we reap event when the audio incoming when segment overflow.
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/151
+    // we use absolutely overflow of segment to make jwplayer/ffplay happy
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-71155184
+    if (muxer->is_segment_absolutely_overflow()) {
         if ((ret = reap_segment("audio", muxer, af->pts)) != ERROR_SUCCESS) {
             return ret;
         }
@@ -1097,8 +1115,6 @@ int SrsHlsCache::write_video(
     SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t dts, SrsCodecSample* sample)
 {
     int ret = ERROR_SUCCESS;
-    
-    video_count++;
     
     // write video to cache.
     if ((ret = cache_video(codec, sample)) != ERROR_SUCCESS) {
@@ -1272,9 +1288,13 @@ int SrsHlsCache::cache_video(SrsAvcAacCodec* codec, SrsCodecSample* sample)
         // 6: Supplemental enhancement information (SEI) sei_rbsp( ), page 61
         // @see: ngx_rtmp_hls_append_aud
         if (!aud_sent) {
-            if (nal_unit_type == 9) {
+            // @remark, when got type 9, we donot send aud_nal, but it will make 
+            //      ios unhappy, so we remove it.
+            // @see https://github.com/winlinvip/simple-rtmp-server/issues/281
+            /*if (nal_unit_type == 9) {
                 aud_sent = true;
-            }
+            }*/
+            
             if (nal_unit_type == 1 || nal_unit_type == 5 || nal_unit_type == 6) {
                 // for type 6, append a aud with type 9.
                 vb->append((const char*)aud_nal, sizeof(aud_nal));
@@ -1439,7 +1459,7 @@ int SrsHls::on_audio(SrsSharedPtrMessage* audio)
     
     sample->clear();
     if ((ret = codec->audio_aac_demux(audio->payload, audio->size, sample)) != ERROR_SUCCESS) {
-        srs_error("codec demux audio failed. ret=%d", ret);
+        srs_error("hls codec demux audio failed. ret=%d", ret);
         return ret;
     }
     
@@ -1483,7 +1503,13 @@ int SrsHls::on_video(SrsSharedPtrMessage* video)
     
     sample->clear();
     if ((ret = codec->video_avc_demux(video->payload, video->size, sample)) != ERROR_SUCCESS) {
-        srs_error("codec demux video failed. ret=%d", ret);
+        srs_error("hls codec demux video failed. ret=%d", ret);
+        return ret;
+    }
+    
+    // ignore info frame,
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/288#issuecomment-69863909
+    if (sample->frame_type == SrsCodecVideoAVCFrameVideoInfoFrame) {
         return ret;
     }
     

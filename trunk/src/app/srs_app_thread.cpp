@@ -26,10 +26,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
 
-// const time for st to convert to us
-#define SRS_TIME_MILLISECONDS 1000
-#define SRS_TIME_SECONDS 1000000
-
 ISrsThreadHandler::ISrsThreadHandler()
 {
 }
@@ -105,7 +101,7 @@ int SrsThread::start()
     
     // wait for cid to ready, for parent thread to get the cid.
     while (_cid < 0 && loop) {
-        st_usleep(10 * SRS_TIME_MILLISECONDS);
+        st_usleep(10 * 1000);
     }
     
     // now, cycle thread can run.
@@ -124,7 +120,11 @@ void SrsThread::stop()
         st_thread_interrupt(tid);
         
         // wait the thread to exit.
-        st_thread_join(tid, NULL);
+        int ret = st_thread_join(tid, NULL);
+        // TODO: FIXME: the join maybe failed, should use a variable to ensure thread terminated.
+        if (ret != 0) {
+            srs_warn("join thread failed. code=%d", ret);
+        }
         
         tid = NULL;
     }
@@ -154,7 +154,7 @@ void SrsThread::thread_cycle()
     
     // wait for cid to ready, for parent thread to get the cid.
     while (!can_run && loop) {
-        st_usleep(10 * SRS_TIME_MILLISECONDS);
+        st_usleep(10 * 1000);
     }
     
     while (loop) {

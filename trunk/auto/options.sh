@@ -73,7 +73,7 @@ SRS_MIPS_UBUNTU12=NO
 SRS_DEV=NO
 # dev, open main server feature for dev, no utest/research/librtmp
 SRS_FAST_DEV=NO
-# demo, for the demo of srs, @see: https://github.com/winlinvip/simple-rtmp-server/wiki/SampleDemo
+# demo, for the demo of srs, @see: https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_SampleDemo
 SRS_DEMO=NO
 # raspberry-pi, open hls/ssl/static
 SRS_PI=NO
@@ -161,7 +161,6 @@ Options:
 
 Presets:
   --x86-x64                 [default] for x86/x64 cpu, common pc and servers.
-  --osx                     for IOS(darwin) to build SRS.
   --pi                      for raspberry-pi(directly build), open features hls/ssl/static.
   --cubie                   for cubieboard(directly build), open features except ffmpeg/nginx.
   --arm                     alias for --with-arm-ubuntu12, for ubuntu12, arm crossbuild
@@ -172,7 +171,7 @@ Presets:
   --disable-all             disable all features, only support vp6 RTMP.
   --dev                     for dev, open all features, no nginx/gperf/gprof/arm.
   --fast-dev                for dev fast compile, the RTMP server, without librtmp/utest/research.
-  --demo                    for srs demo, @see: https://github.com/winlinvip/simple-rtmp-server/wiki/SampleDemo
+  --demo                    for srs demo, @see: https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_SampleDemo
   --full                    enable all features, no gperf/gprof/arm.
   
 Conflicts:
@@ -252,7 +251,6 @@ function parse_user_option() {
         --log-trace)                    SRS_LOG_TRACE=YES           ;;
         
         --x86-x64)                      SRS_X86_X64=YES             ;;
-        --osx)                          SRS_OSX=YES                 ;;
         --arm)                          SRS_ARM_UBUNTU12=YES        ;;
         --mips)                         SRS_MIPS_UBUNTU12=YES       ;;
         --pi)                           SRS_PI=YES                  ;;

@@ -40,12 +40,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_kernel_utility.hpp>
 #include <srs_app_http_api.hpp>
 #include <srs_app_http_conn.hpp>
-#include <srs_app_http.hpp>
 #include <srs_app_ingest.hpp>
 #include <srs_app_source.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_app_heartbeat.hpp>
-#include <srs_app_kbps.hpp>
 
 // signal defines.
 #define SIGNAL_RELOAD SIGHUP
@@ -530,20 +528,11 @@ int SrsServer::initialize_st()
 {
     int ret = ERROR_SUCCESS;
     
-    // use linux epoll.
-    if (st_set_eventsys(ST_EVENTSYS_ALT) == -1) {
-        ret = ERROR_ST_SET_EPOLL;
-        srs_error("st_set_eventsys use linux epoll failed. ret=%d", ret);
+    // init st
+    if ((ret = srs_init_st()) != ERROR_SUCCESS) {
+        srs_error("init st failed. ret=%d", ret);
         return ret;
     }
-    srs_verbose("st_set_eventsys use linux epoll success");
-    
-    if(st_init() != 0){
-        ret = ERROR_ST_INITIALIZE;
-        srs_error("st_init failed. ret=%d", ret);
-        return ret;
-    }
-    srs_verbose("st_init success");
     
     // @remark, st alloc segment use mmap, which only support 32757 threads,
     // if need to support more, for instance, 100k threads, define the macro MALLOC_STACK.
@@ -971,7 +960,7 @@ int SrsServer::on_reload_vhost_added(std::string vhost)
     return ret;
 }
 
-int SrsServer::on_reload_vhost_removed(std::string vhost)
+int SrsServer::on_reload_vhost_removed(std::string /*vhost*/)
 {
     int ret = ERROR_SUCCESS;
     

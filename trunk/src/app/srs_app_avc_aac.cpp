@@ -23,11 +23,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_app_avc_aac.hpp>
 
-#include <stdlib.h>
-
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
-#include <srs_kernel_codec.hpp>
 #include <srs_kernel_stream.hpp>
 #include <srs_protocol_amf0.hpp>
 
@@ -177,7 +174,7 @@ int SrsAvcAacCodec::audio_aac_demux(char* data, int size, SrsCodecSample* sample
         return ret;
     }
     
-    if ((ret = stream->initialize((char*)data, size)) != ERROR_SUCCESS) {
+    if ((ret = stream->initialize(data, size)) != ERROR_SUCCESS) {
         return ret;
     }
 
@@ -250,6 +247,13 @@ int SrsAvcAacCodec::audio_aac_demux(char* data, int size, SrsCodecSample* sample
             return ret;
         }
         
+        // the profile = object_id + 1
+        // @see aac-mp4a-format-ISO_IEC_14496-3+2001.pdf, page 78,
+        //      Table 1. A.9 ¨C MPEG-2 Audio profiles and MPEG-4 Audio object types
+        // so the aac_profile should plus 1, not minus 1, and nginx-rtmp used it to 
+        // downcast aac SSR to LC.
+        // @see https://github.com/winlinvip/simple-rtmp-server/issues/310
+        // TODO: FIXME: fix the following in future version.
         // aac_profile = audioObjectType - 1
         aac_profile--;
         
@@ -300,6 +304,8 @@ int SrsAvcAacCodec::audio_aac_demux(char* data, int size, SrsCodecSample* sample
             case 44100:
                 sample->sound_rate = SrsCodecAudioSampleRate44100;
                 break;
+            default:
+                break;
         };
     }
     
@@ -320,7 +326,7 @@ int SrsAvcAacCodec::video_avc_demux(char* data, int size, SrsCodecSample* sample
         return ret;
     }
     
-    if ((ret = stream->initialize((char*)data, size)) != ERROR_SUCCESS) {
+    if ((ret = stream->initialize(data, size)) != ERROR_SUCCESS) {
         return ret;
     }
 
@@ -337,6 +343,13 @@ int SrsAvcAacCodec::video_avc_demux(char* data, int size, SrsCodecSample* sample
     frame_type = (frame_type >> 4) & 0x0f;
     
     sample->frame_type = (SrsCodecVideoAVCFrame)frame_type;
+    
+    // ignore info frame without error,
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/288#issuecomment-69863909
+    if (sample->frame_type == SrsCodecVideoAVCFrameVideoInfoFrame) {
+        srs_warn("hls igone the info frame, ret=%d", ret);
+        return ret;
+    }
     
     // only support h.264/avc
     if (codec_id != SrsCodecVideoAVC) {
@@ -467,13 +480,22 @@ int SrsAvcAacCodec::video_avc_demux(char* data, int size, SrsCodecSample* sample
             int32_t NALUnitLength = 0;
             if (NAL_unit_length == 3) {
                 NALUnitLength = stream->read_4bytes();
-            } else if (NALUnitLength == 2) {
+            } else if (NAL_unit_length == 2) {
                 NALUnitLength = stream->read_3bytes();
-            } else if (NALUnitLength == 1) {
+            } else if (NAL_unit_length == 1) {
                 NALUnitLength = stream->read_2bytes();
             } else {
                 NALUnitLength = stream->read_1bytes();
             }
+            
+            // maybe stream is AnnexB format.
+            // see: https://github.com/winlinvip/simple-rtmp-server/issues/183
+            if (NALUnitLength < 0) {
+                ret = ERROR_HLS_DECODE_ERROR;
+                srs_error("maybe stream is AnnexB format. ret=%d", ret);
+                return ret;
+            }
+            
             // NALUnit
             if (!stream->require(NALUnitLength)) {
                 ret = ERROR_HLS_DECODE_ERROR;

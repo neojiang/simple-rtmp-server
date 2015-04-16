@@ -32,20 +32,14 @@ using namespace std;
 
 #include <srs_kernel_error.hpp>
 #include <srs_protocol_rtmp.hpp>
-#include <srs_kernel_log.hpp>
-#include <srs_protocol_rtmp.hpp>
 #include <srs_protocol_io.hpp>
 #include <srs_app_config.hpp>
 #include <srs_protocol_utility.hpp>
-#include <srs_protocol_rtmp.hpp>
 #include <srs_app_st_socket.hpp>
-#include <srs_protocol_stack.hpp>
 #include <srs_app_source.hpp>
 #include <srs_app_pithy_print.hpp>
 #include <srs_core_autofree.hpp>
-#include <srs_app_st_socket.hpp>
 #include <srs_app_kbps.hpp>
-#include <srs_kernel_utility.hpp>
 #include <srs_protocol_msg_array.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_protocol_amf0.hpp>
@@ -228,7 +222,7 @@ int SrsEdgeIngester::connect_app(string ep_server, string ep_port)
     // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
-    data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_KEY" "RTMP_SIG_SRS_VERSION" ("RTMP_SIG_SRS_URL_SHORT")"));
+    data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_SERVER));
     data->set("srs_license", SrsAmf0Any::str(RTMP_SIG_SRS_LICENSE));
     data->set("srs_role", SrsAmf0Any::str(RTMP_SIG_SRS_ROLE));
     data->set("srs_url", SrsAmf0Any::str(RTMP_SIG_SRS_URL));
@@ -236,7 +230,8 @@ int SrsEdgeIngester::connect_app(string ep_server, string ep_port)
     data->set("srs_site", SrsAmf0Any::str(RTMP_SIG_SRS_WEB));
     data->set("srs_email", SrsAmf0Any::str(RTMP_SIG_SRS_EMAIL));
     data->set("srs_copyright", SrsAmf0Any::str(RTMP_SIG_SRS_COPYRIGHT));
-    data->set("srs_primary_authors", SrsAmf0Any::str(RTMP_SIG_SRS_PRIMARY_AUTHROS));
+    data->set("srs_primary", SrsAmf0Any::str(RTMP_SIG_SRS_PRIMARY));
+    data->set("srs_authors", SrsAmf0Any::str(RTMP_SIG_SRS_AUTHROS));
     // for edge to directly get the id of client.
     data->set("srs_pid", SrsAmf0Any::number(getpid()));
     data->set("srs_id", SrsAmf0Any::number(_srs_context->get_id()));
@@ -659,7 +654,7 @@ int SrsEdgeForwarder::connect_app(string ep_server, string ep_port)
     // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
-    data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_KEY" "RTMP_SIG_SRS_VERSION" ("RTMP_SIG_SRS_URL_SHORT")"));
+    data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_SERVER));
     data->set("srs_license", SrsAmf0Any::str(RTMP_SIG_SRS_LICENSE));
     data->set("srs_role", SrsAmf0Any::str(RTMP_SIG_SRS_ROLE));
     data->set("srs_url", SrsAmf0Any::str(RTMP_SIG_SRS_URL));
@@ -667,7 +662,8 @@ int SrsEdgeForwarder::connect_app(string ep_server, string ep_port)
     data->set("srs_site", SrsAmf0Any::str(RTMP_SIG_SRS_WEB));
     data->set("srs_email", SrsAmf0Any::str(RTMP_SIG_SRS_EMAIL));
     data->set("srs_copyright", SrsAmf0Any::str(RTMP_SIG_SRS_COPYRIGHT));
-    data->set("srs_primary_authors", SrsAmf0Any::str(RTMP_SIG_SRS_PRIMARY_AUTHROS));
+    data->set("srs_primary", SrsAmf0Any::str(RTMP_SIG_SRS_PRIMARY));
+    data->set("srs_authors", SrsAmf0Any::str(RTMP_SIG_SRS_AUTHROS));
     // for edge to directly get the id of client.
     data->set("srs_pid", SrsAmf0Any::number(getpid()));
     data->set("srs_id", SrsAmf0Any::number(_srs_context->get_id()));
@@ -820,13 +816,25 @@ int SrsPublishEdge::on_client_publish()
         return ret;
     }
     
-    if ((ret = forwarder->start()) != ERROR_SUCCESS) {
-        return ret;
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/180
+    // to avoid multiple publish the same stream on the same edge,
+    // directly enter the publish stage.
+    if (true) {
+        SrsEdgeState pstate = state;
+        state = SrsEdgeStatePublish;
+        srs_trace("edge change from %d to state %d (push).", pstate, state);
     }
     
-    SrsEdgeState pstate = state;
-    state = SrsEdgeStatePublish;
-    srs_trace("edge change from %d to state %d (push).", pstate, state);
+    // start to forward stream to origin.
+    ret = forwarder->start();
+    
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/180
+    // when failed, revert to init
+    if (ret != ERROR_SUCCESS) {
+        SrsEdgeState pstate = state;
+        state = SrsEdgeStateInit;
+        srs_trace("edge revert from %d to state %d (push). ret=%d", pstate, state, ret);
+    }
     
     return ret;
 }

@@ -192,10 +192,16 @@ public:
     virtual int segment_open(int64_t segment_start_dts);
     virtual int on_sequence_header();
     /**
-    * whether video overflow,
-    * that is whether the current segment duration >= the segment in config
+    * whether segment overflow,
+    * that is whether the current segment duration>=(the segment in config)
     */
     virtual bool is_segment_overflow();
+    /**
+    * whether segment absolutely overflow, for pure audio to reap segment,
+    * that is whether the current segment duration>=2*(the segment in config)
+    * @see https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-71155184
+    */
+    virtual bool is_segment_absolutely_overflow();
     virtual int flush_audio(SrsMpegtsFrame* af, SrsBuffer* ab);
     virtual int flush_video(SrsMpegtsFrame* af, SrsBuffer* ab, SrsMpegtsFrame* vf, SrsBuffer* vb);
     /**
@@ -239,14 +245,6 @@ private:
     int64_t audio_buffer_start_pts;
     // time jitter for aac
     SrsHlsAacJitter* aac_jitter;
-private:
-    /**
-    * for pure audio HLS application,
-    * the video count used to count the video,
-    * if zero and audio buffer overflow, reap the ts,
-    * just like we got a keyframe.
-    */
-    u_int32_t video_count;
 public:
     SrsHlsCache();
     virtual ~SrsHlsCache();

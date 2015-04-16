@@ -30,12 +30,10 @@ using namespace std;
 
 #include <srs_kernel_error.hpp>
 #include <srs_protocol_rtmp.hpp>
-#include <srs_kernel_log.hpp>
 #include <srs_app_st_socket.hpp>
 #include <srs_app_http.hpp>
 #include <srs_app_json.hpp>
 #include <srs_app_dvr.hpp>
-#include <srs_app_config.hpp>
 #include <srs_app_http_client.hpp>
 
 #define SRS_HTTP_RESPONSE_OK "0"
@@ -114,8 +112,7 @@ void SrsHttpHooks::on_close(string url, int client_id, string ip, SrsRequest* re
         << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("pageUrl", req->pageUrl)
+        << __SRS_JFIELD_STR("app", req->app)
         << __SRS_JOBJECT_END;
     std::string data = ss.str();
     std::string res;
@@ -160,7 +157,6 @@ int SrsHttpHooks::on_publish(string url, int client_id, string ip, SrsRequest* r
         << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("pageUrl", req->pageUrl) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("stream", req->stream)
         << __SRS_JOBJECT_END;
     std::string data = ss.str();
@@ -206,7 +202,6 @@ void SrsHttpHooks::on_unpublish(string url, int client_id, string ip, SrsRequest
         << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("pageUrl", req->pageUrl) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("stream", req->stream)
         << __SRS_JOBJECT_END;
     std::string data = ss.str();
@@ -252,7 +247,6 @@ int SrsHttpHooks::on_play(string url, int client_id, string ip, SrsRequest* req)
         << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("pageUrl", req->pageUrl) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("stream", req->stream)
         << __SRS_JOBJECT_END;
     std::string data = ss.str();
@@ -298,7 +292,6 @@ void SrsHttpHooks::on_stop(string url, int client_id, string ip, SrsRequest* req
         << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("pageUrl", req->pageUrl) << __SRS_JFIELD_CONT
         << __SRS_JFIELD_STR("stream", req->stream)
         << __SRS_JOBJECT_END;
     std::string data = ss.str();

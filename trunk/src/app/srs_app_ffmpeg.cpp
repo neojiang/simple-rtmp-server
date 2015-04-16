@@ -35,11 +35,8 @@ using namespace std;
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
 #include <srs_app_config.hpp>
-#include <srs_protocol_rtmp.hpp>
-#include <srs_app_pithy_print.hpp>
-#include <srs_protocol_stack.hpp>
 
-#ifdef SRS_AUTO_FFMPEG
+#ifdef SRS_AUTO_FFMPEG_STUB
 
 #define SRS_RTMP_ENCODER_COPY           "copy"
 #define SRS_RTMP_ENCODER_NO_VIDEO       "vn"
@@ -210,6 +207,13 @@ int SrsFFMPEG::initialize_transcode(SrsConfDirective* engine)
         ret = ERROR_ENCODER_OUTPUT;
         srs_error("invalid empty output, ret=%d", ret);
         return ret;
+    }
+    
+    // for not rtmp input, donot append the iformat,
+    // for example, "-f flv" before "-i udp://192.168.1.252:2222"
+    // @see https://github.com/winlinvip/simple-rtmp-server/issues/290
+    if (input.find("rtmp://") != 0) {
+        iformat = "";
     }
     
     return ret;
